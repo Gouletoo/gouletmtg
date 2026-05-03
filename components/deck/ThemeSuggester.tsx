@@ -62,7 +62,11 @@ export function ThemeSuggester() {
       if ((data.suggestions ?? []).length === 0) {
         if ((data.droppedNames ?? []).length > 0) {
           setError(
-            `Gemini a proposé ${data.droppedNames.length} commander(s) mais aucun n'a été trouvé dans ta base. Re-essaie ou lance la sync Scryfall.`
+            `Gemini a proposé ${data.droppedNames.length} commander(s) mais aucun n'a été trouvé dans ta base : ${data.droppedNames.slice(0, 5).join(", ")}…`
+          );
+        } else if (data.debug) {
+          setError(
+            `Gemini a répondu mais le parser n'a rien extrait. Réponse brute : « ${data.debug.slice(0, 200)}… »`
           );
         } else {
           setError("Gemini n'a pas retourné de suggestions. Re-essaie avec un thème différent.");

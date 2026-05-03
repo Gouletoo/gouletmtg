@@ -9,10 +9,10 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "theme requis" }, { status: 400 });
   }
 
-  let raw;
+  let geminiResult;
   try {
-    raw = await suggestCommanders(theme);
-    console.log(`[suggest] Gemini returned ${raw.length} raw suggestions for theme: ${theme}`);
+    geminiResult = await suggestCommanders(theme);
+    console.log(`[suggest] Gemini returned ${geminiResult.suggestions.length} raw suggestions for theme: ${theme}`);
   } catch (e) {
     console.error("[suggest] Gemini error:", e);
     return NextResponse.json(
@@ -21,11 +21,13 @@ export async function POST(req: NextRequest) {
     );
   }
 
+  const raw = geminiResult.suggestions;
+
   if (raw.length === 0) {
     return NextResponse.json({
       suggestions: [],
       droppedNames: [],
-      debug: "Gemini returned no suggestions or response was malformed",
+      debug: geminiResult.debug,
     });
   }
 

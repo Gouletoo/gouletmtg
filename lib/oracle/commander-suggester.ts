@@ -52,7 +52,7 @@ CRITICAL RULES:
 - "reason" in English to avoid quote escaping issues. Plain ASCII when possible.
 - 8 suggestions maximum.`;
 
-export async function suggestCommanders(theme: string): Promise<CommanderSuggestion[]> {
+export async function suggestCommanders(theme: string): Promise<{ suggestions: CommanderSuggestion[]; debug: string }> {
   const model = getClient().getGenerativeModel({
     model: "gemini-2.5-flash",
     generationConfig: {
@@ -69,7 +69,10 @@ export async function suggestCommanders(theme: string): Promise<CommanderSuggest
   console.log("[gemini-suggest] raw response (first 500 chars):", text.slice(0, 500));
   const parsed = parseSuggestionsJSON(text);
   console.log("[gemini-suggest] parsed", parsed.suggestions?.length ?? 0, "suggestions");
-  return parsed.suggestions ?? [];
+  return {
+    suggestions: parsed.suggestions ?? [],
+    debug: text.slice(0, 800),
+  };
 }
 
 /** Parse robuste — tolère les sorties Gemini légèrement malformées (apostrophes non échappées, etc.). */

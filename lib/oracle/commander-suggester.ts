@@ -58,7 +58,7 @@ export async function suggestCommanders(theme: string): Promise<{ suggestions: C
     generationConfig: {
       temperature: 0.4,
       responseMimeType: "application/json",
-      maxOutputTokens: 1500,
+      maxOutputTokens: 4000,
     },
   });
 
@@ -75,55 +75,44 @@ export async function suggestCommanders(theme: string): Promise<{ suggestions: C
   };
 }
 
-/** Parse robuste — tolère les sorties Gemini légèrement malformées (apostrophes non échappées, etc.). */
+/** Parse robuste — tolère les JSON tronqués et les apostrophes mal échappées. */
 function parseSuggestionsJSON(raw: string): { suggestions?: CommanderSuggestion[] } {
-  // 1. Essai direct
+  // 1. Essai direct (JSON complet bien formé)
   try {
     return JSON.parse(raw);
   } catch {
     /* on continue */
   }
 
-  // 2. Strip markdown code fences
-  let cleaned = raw.replace(/^```[a-z]*\n?/i, "").replace(/```\s*$/, "").trim();
+  // 2. Strip markdown / BOM / whitespace
+  const cleaned = raw
+    .replace(/^﻿/, "")
+    .replace(/^```[a-z]*\n?/i, "")
+    .replace(/```\s*$/, "")
+    .trim();
   try {
     return JSON.parse(cleaned);
   } catch {
     /* on continue */
   }
 
-  // 3. Tente d'extraire le tableau "suggestions" et de parser carte par carte
-  const arrayMatch = cleaned.match(/"suggestions"\s*:\s*\[([\s\S]+)\]/);
-  if (arrayMatch) {
-    const inner = arrayMatch[1];
-    // Découpe sur les "}, {" pour avoir des objets indépendants
-    const objects = inner.split(/\}\s*,\s*\{/).map((s, i, arr) => {
-      const open = i === 0 ? "" : "{";
-      const close = i === arr.length - 1 ? "" : "}";
-      return `${open}${s}${close}`;
+  // 3. Extraction objet-par-objet, tolérant aux JSON tronqués au milieu d'un objet.
+  //    On cherche tous les objets {"name": "...", "reason": "..."} via regex robuste.
+  const suggestions: CommanderSuggestion[] = [];
+  // Regex : "name":"X" ... "reason":"Y" — accepte les chars échappés \" dans les strings
+  const objectRegex =
+    /\{\s*"name"\s*:\s*"((?:[^"\\]|\\.)*)"\s*,\s*"reason"\s*:\s*"((?:[^"\\]|\\.)*)"\s*\}/g;
+  let match: RegExpExecArray | null;
+  while ((match = objectRegex.exec(cleaned)) !== null) {
+    suggestions.push({
+      name: match[1].replace(/\\"/g, '"').replace(/\\n/g, " "),
+      reason: match[2].replace(/\\"/g, '"').replace(/\\n/g, " "),
     });
-
-    const suggestions: CommanderSuggestion[] = [];
-    for (const obj of objects) {
-      try {
-        const parsed = JSON.parse(obj) as CommanderSuggestion;
-        if (parsed.name && parsed.reason) suggestions.push(parsed);
-      } catch {
-        // Sauvetage manuel : extrait name et reason via regex
-        const nameMatch = obj.match(/"name"\s*:\s*"([^"]+)"/);
-        const reasonMatch = obj.match(/"reason"\s*:\s*"([^"]*(?:\\.[^"\\]*)*)"/);
-        if (nameMatch) {
-          suggestions.push({
-            name: nameMatch[1],
-            reason: reasonMatch?.[1].replace(/\\"/g, '"') ?? "",
-          });
-        }
-      }
-    }
-    if (suggestions.length > 0) return { suggestions };
   }
 
-  // 4. Dernier recours : on retourne vide mais on log
-  console.error("Failed to parse Gemini suggestions:", raw.slice(0, 500));
+  if (suggestions.length > 0) return { suggestions };
+
+  // 4. Dernier recours : on retourne vide
+  console.error("Failed to parse Gemini suggestions, raw start:", cleaned.slice(0, 500));
   return { suggestions: [] };
 }

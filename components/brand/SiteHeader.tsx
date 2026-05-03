@@ -1,7 +1,7 @@
 import Link from "next/link";
 import { createClient } from "@/lib/supabase/server";
 
-export async function SiteHeader({ active }: { active?: "decks" | "cards" | "profile" }) {
+export async function SiteHeader({ active }: { active?: "decks" | "cards" | "oracle" | "profile" }) {
   const supabase = await createClient();
   const {
     data: { user },
@@ -32,6 +32,16 @@ export async function SiteHeader({ active }: { active?: "decks" | "cards" | "pro
           }
         >
           Cartes
+        </Link>
+        <Link
+          href="/oracle"
+          className={
+            active === "oracle"
+              ? "text-terracotta"
+              : "text-ink/70 hover:text-terracotta transition-colors"
+          }
+        >
+          Oracle
         </Link>
         <Link
           href="/profile"

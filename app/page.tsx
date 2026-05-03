@@ -14,6 +14,9 @@ export default function Home() {
           <Link href="/cards" className="hover:text-terracotta transition-colors">
             Cartes
           </Link>
+          <Link href="/oracle" className="hover:text-terracotta transition-colors">
+            Oracle
+          </Link>
           <Link href="/profile" className="hover:text-terracotta transition-colors">
             Profil
           </Link>

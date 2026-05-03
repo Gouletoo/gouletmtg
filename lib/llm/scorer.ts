@@ -34,7 +34,7 @@ function getClient() {
 
 export async function scorePair(input: PairScoreInput): Promise<PairScoreResult> {
   const model = getClient().getGenerativeModel({
-    model: "gemini-2.0-flash",
+    model: "gemini-2.5-flash",
     generationConfig: {
       responseMimeType: "application/json",
       temperature: 0.2,

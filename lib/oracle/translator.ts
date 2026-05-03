@@ -76,7 +76,7 @@ function getClient() {
 
 export async function translateToScryfall(naturalQuery: string): Promise<string> {
   const model = getClient().getGenerativeModel({
-    model: "gemini-2.0-flash",
+    model: "gemini-2.5-flash",
     generationConfig: {
       temperature: 0.1,
       maxOutputTokens: 200,

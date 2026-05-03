@@ -1,6 +1,8 @@
 "use client";
 
 import { useMemo, useState } from "react";
+import { useRouter } from "next/navigation";
+import { AddCardModal } from "./AddCardModal";
 
 type CardSummary = {
   scryfall_id: string;
@@ -74,6 +76,25 @@ export function DeckOverview({
   commanders: CardSummary[];
   deckCards: DeckCardRow[];
 }) {
+  const router = useRouter();
+  const [showAddModal, setShowAddModal] = useState(false);
+
+  const allCategoriesInDeck = useMemo(() => {
+    const set = new Set<string>();
+    for (const r of deckCards) {
+      for (const c of r.categories ?? []) set.add(c);
+    }
+    return Array.from(set);
+  }, [deckCards]);
+
+  const removeCard = async (cardId: string) => {
+    if (!confirm("Retirer cette carte du deck ?")) return;
+    const r = await fetch(`/api/decks/${deck.id}/cards/${cardId}`, {
+      method: "DELETE",
+    });
+    if (r.ok) router.refresh();
+  };
+
   const allRows = useMemo(
     () =>
       deckCards
@@ -163,9 +184,17 @@ export function DeckOverview({
               {deck.name}
             </h1>
           </div>
-          <div className="text-right text-sm font-body text-ink/60">
-            <p>{totalCount} / 100 cartes</p>
-            <p>{totalPrice.toFixed(2)} USD</p>
+          <div className="flex items-center gap-6">
+            <div className="text-right text-sm font-body text-ink/60">
+              <p>{totalCount} / 100 cartes</p>
+              <p>{totalPrice.toFixed(2)} USD</p>
+            </div>
+            <button
+              onClick={() => setShowAddModal(true)}
+              className="px-5 py-3 bg-ink text-cream rounded-sm hover:bg-terracotta transition-colors text-xs uppercase tracking-wider"
+            >
+              + Ajouter une carte
+            </button>
           </div>
         </div>
         {deck.strategy_summary && (
@@ -199,7 +228,12 @@ export function DeckOverview({
               <CategorySection key={cat} title={cat} count={count} defaultOpen>
                 <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-3">
                   {items.map((i) => (
-                    <CardTile key={i.card.scryfall_id} card={i.card} qty={i.qty} />
+                    <CardTile
+                      key={i.card.scryfall_id}
+                      card={i.card}
+                      qty={i.qty}
+                      onRemove={() => removeCard(i.card.scryfall_id)}
+                    />
                   ))}
                 </div>
               </CategorySection>
@@ -273,7 +307,13 @@ export function DeckOverview({
                   <CompactCategory key={cat} title={cat} count={count}>
                     <div className="grid grid-cols-3 gap-2">
                       {items.map((i) => (
-                        <CardTile key={i.card.scryfall_id} card={i.card} qty={i.qty} compact />
+                        <CardTile
+                          key={i.card.scryfall_id}
+                          card={i.card}
+                          qty={i.qty}
+                          compact
+                          onRemove={() => removeCard(i.card.scryfall_id)}
+                        />
                       ))}
                     </div>
                   </CompactCategory>
@@ -283,6 +323,14 @@ export function DeckOverview({
           )}
         </aside>
       </section>
+
+      {showAddModal && (
+        <AddCardModal
+          deckId={deck.id}
+          existingCategories={allCategoriesInDeck}
+          onClose={() => setShowAddModal(false)}
+        />
+      )}
     </>
   );
 }
@@ -359,10 +407,12 @@ function CardTile({
   card,
   qty,
   compact = false,
+  onRemove,
 }: {
   card: CardSummary;
   qty: number;
   compact?: boolean;
+  onRemove?: () => void;
 }) {
   const expensive = (parseFloat(card.prices?.usd ?? "0") || 0) > 50;
   return (
@@ -383,14 +433,23 @@ function CardTile({
         </div>
       )}
       {qty > 1 && (
-        <span className={`absolute top-1 right-1 bg-ink text-cream rounded-full ${compact ? "w-5 h-5 text-[10px]" : "w-6 h-6 text-xs"} flex items-center justify-center font-body`}>
+        <span className={`absolute top-1 right-1 bg-ink text-cream rounded-full ${compact ? "w-5 h-5 text-[10px]" : "w-6 h-6 text-xs"} flex items-center justify-center font-body pointer-events-none`}>
           ×{qty}
         </span>
       )}
       {expensive && !compact && (
-        <span className="absolute top-2 left-2 bg-sand text-ink rounded-sm px-2 py-0.5 text-[10px] font-body uppercase tracking-wider">
+        <span className="absolute top-2 left-2 bg-sand text-ink rounded-sm px-2 py-0.5 text-[10px] font-body uppercase tracking-wider pointer-events-none">
           50$+
         </span>
+      )}
+      {onRemove && (
+        <button
+          onClick={onRemove}
+          aria-label={`Retirer ${card.name}`}
+          className={`absolute ${compact ? "bottom-1 right-1 w-6 h-6 text-xs" : "bottom-2 right-2 w-8 h-8 text-sm"} bg-ink/80 hover:bg-terracotta text-cream rounded-full opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center font-body`}
+        >
+          ✕
+        </button>
       )}
     </article>
   );

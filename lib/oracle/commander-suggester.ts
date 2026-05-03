@@ -52,7 +52,10 @@ CRITICAL RULES:
 - "reason" in English to avoid quote escaping issues. Plain ASCII when possible.
 - 8 suggestions maximum.`;
 
-export async function suggestCommanders(theme: string): Promise<{ suggestions: CommanderSuggestion[]; debug: string }> {
+export async function suggestCommanders(
+  theme: string,
+  colors?: string[]
+): Promise<{ suggestions: CommanderSuggestion[]; debug: string }> {
   const model = getClient().getGenerativeModel({
     model: "gemini-2.5-flash",
     generationConfig: {
@@ -62,7 +65,12 @@ export async function suggestCommanders(theme: string): Promise<{ suggestions: C
     },
   });
 
-  const prompt = `${PROMPT_PREAMBLE}\n\nThème / archétype / mécanique recherché :\n${theme}`;
+  let colorConstraint = "";
+  if (colors && colors.length > 0 && colors.length < 5) {
+    colorConstraint = `\n\nCONTRAINTE STRICTE de couleur : le commander doit avoir une color identity INCLUSE dans { ${colors.join(", ")} } (sous-ensemble — il peut avoir moins de couleurs mais aucune autre).`;
+  }
+
+  const prompt = `${PROMPT_PREAMBLE}${colorConstraint}\n\nThème / archétype / mécanique recherché :\n${theme}`;
 
   const r = await model.generateContent(prompt);
   const text = r.response.text();

@@ -3,16 +3,17 @@ import { createClient } from "@/lib/supabase/server";
 import { suggestCommanders } from "@/lib/oracle/commander-suggester";
 
 export async function POST(req: NextRequest) {
-  const body = (await req.json()) as { theme: string };
+  const body = (await req.json()) as { theme: string; colors?: string[] };
   const theme = body.theme?.trim();
   if (!theme) {
     return NextResponse.json({ error: "theme requis" }, { status: 400 });
   }
+  const colors = (body.colors ?? []).filter((c) => /^[WUBRG]$/.test(c));
 
   let geminiResult;
   try {
-    geminiResult = await suggestCommanders(theme);
-    console.log(`[suggest] Gemini returned ${geminiResult.suggestions.length} raw suggestions for theme: ${theme}`);
+    geminiResult = await suggestCommanders(theme, colors);
+    console.log(`[suggest] Gemini returned ${geminiResult.suggestions.length} raw suggestions for theme: ${theme} (colors: ${colors.join("") || "any"})`);
   } catch (e) {
     console.error("[suggest] Gemini error:", e);
     return NextResponse.json(
@@ -39,9 +40,10 @@ export async function POST(req: NextRequest) {
     .select("scryfall_id,name,type_line,image_uris,color_identity,oracle_text,prices,legalities")
     .in("name", names);
 
-  // Map nom → carte (filtre : legendary creature ET legal commander)
+  // Map nom → carte (filtre : legendary creature ET legal commander ET color identity OK)
   type CardRow = NonNullable<typeof matches>[number];
   const validByName = new Map<string, CardRow>();
+  const allowedColors = new Set(colors);
   for (const c of matches ?? []) {
     const isLegendaryCreature =
       typeof c.type_line === "string" &&
@@ -49,7 +51,13 @@ export async function POST(req: NextRequest) {
       /creature|planeswalker/i.test(c.type_line);
     const legalities = c.legalities as Record<string, string> | null;
     const legalCommander = legalities?.commander === "legal";
-    if (isLegendaryCreature && legalCommander) {
+    // Si l'utilisateur a précisé des couleurs, l'identité du commander doit être incluse dedans
+    let colorOk = true;
+    if (colors.length > 0 && colors.length < 5) {
+      const ci = (c.color_identity as string[] | null) ?? [];
+      colorOk = ci.every((col) => allowedColors.has(col));
+    }
+    if (isLegendaryCreature && legalCommander && colorOk) {
       validByName.set(c.name as string, c);
     }
   }

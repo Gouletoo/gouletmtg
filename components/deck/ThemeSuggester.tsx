@@ -14,6 +14,14 @@ type Suggestion = {
   reason: string;
 };
 
+const COLORS = [
+  { code: "W", swatch: "#F5EDDF", label: "Blanc" },
+  { code: "U", swatch: "#7BAFC4", label: "Bleu" },
+  { code: "B", swatch: "#2A2218", label: "Noir" },
+  { code: "R", swatch: "#C4704A", label: "Rouge" },
+  { code: "G", swatch: "#6B8E5A", label: "Vert" },
+];
+
 const EXAMPLES = [
   "Tribal allies avec triggers de combat",
   "Tokens swarm verts qui se transforment en ressources",
@@ -28,11 +36,15 @@ const EXAMPLES = [
 export function ThemeSuggester() {
   const router = useRouter();
   const [theme, setTheme] = useState("");
+  const [colors, setColors] = useState<string[]>([]);
   const [loading, setLoading] = useState(false);
   const [suggestions, setSuggestions] = useState<Suggestion[]>([]);
   const [dropped, setDropped] = useState<string[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [creating, setCreating] = useState<string | null>(null);
+
+  const toggleColor = (c: string) =>
+    setColors((prev) => (prev.includes(c) ? prev.filter((x) => x !== c) : [...prev, c]));
 
   const [hasRun, setHasRun] = useState(false);
 
@@ -49,7 +61,7 @@ export function ThemeSuggester() {
       const r = await fetch("/api/decks/suggest-commanders", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ theme }),
+        body: JSON.stringify({ theme, colors }),
       });
       const data = await r.json().catch(() => ({}));
 
@@ -101,11 +113,53 @@ export function ThemeSuggester() {
 
   return (
     <div className="space-y-8">
-      <form onSubmit={submit} className="space-y-3">
+      <form onSubmit={submit} className="space-y-4">
+        <div>
+          <label className="block font-body text-xs uppercase tracking-wider text-ink/60 mb-3">
+            Couleurs autorisées (optionnel)
+          </label>
+          <div className="flex gap-2 items-center flex-wrap">
+            {COLORS.map((c) => {
+              const active = colors.includes(c.code);
+              return (
+                <button
+                  type="button"
+                  key={c.code}
+                  onClick={() => toggleColor(c.code)}
+                  className={`w-10 h-10 rounded-full border-2 transition-all ${
+                    active
+                      ? "border-terracotta scale-110"
+                      : "border-ink/15 hover:border-ink/40"
+                  }`}
+                  style={{ backgroundColor: c.swatch }}
+                  title={c.label}
+                  aria-pressed={active}
+                />
+              );
+            })}
+            {colors.length > 0 && (
+              <button
+                type="button"
+                onClick={() => setColors([])}
+                className="ml-2 text-xs font-body text-ink/40 hover:text-terracotta underline"
+              >
+                Réinitialiser
+              </button>
+            )}
+            <span className="ml-2 text-xs font-body text-ink/40">
+              {colors.length === 0
+                ? "Aucune restriction"
+                : colors.length === 5
+                ? "Toutes les couleurs"
+                : `${colors.join("")} et sous-ensembles`}
+            </span>
+          </div>
+        </div>
+
         <textarea
           value={theme}
           onChange={(e) => setTheme(e.target.value)}
-          placeholder="Ex: 'tribal elfes verts/blancs avec triggers de combat et token doublers'"
+          placeholder="Ex: 'tribal elfes avec triggers de combat et token doublers'"
           rows={3}
           className="w-full px-4 py-3 bg-cream border border-ink/15 rounded-sm focus:border-terracotta focus:outline-none font-body text-base resize-none"
         />

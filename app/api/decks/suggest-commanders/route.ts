@@ -12,7 +12,9 @@ export async function POST(req: NextRequest) {
   let raw;
   try {
     raw = await suggestCommanders(theme);
+    console.log(`[suggest] Gemini returned ${raw.length} raw suggestions for theme: ${theme}`);
   } catch (e) {
+    console.error("[suggest] Gemini error:", e);
     return NextResponse.json(
       { error: (e as Error).message ?? "Échec de la suggestion" },
       { status: 500 }
@@ -20,7 +22,11 @@ export async function POST(req: NextRequest) {
   }
 
   if (raw.length === 0) {
-    return NextResponse.json({ suggestions: [] });
+    return NextResponse.json({
+      suggestions: [],
+      droppedNames: [],
+      debug: "Gemini returned no suggestions or response was malformed",
+    });
   }
 
   // Valider chaque nom contre notre table cards
@@ -63,9 +69,14 @@ export async function POST(req: NextRequest) {
     })
     .filter(Boolean);
 
+  const droppedNames = raw.filter((s) => !validByName.has(s.name)).map((s) => s.name);
+  console.log(
+    `[suggest] ${suggestions.length} validated / ${raw.length} raw. Dropped: ${droppedNames.join(", ")}`
+  );
+
   return NextResponse.json({
     theme,
     suggestions,
-    droppedNames: raw.filter((s) => !validByName.has(s.name)).map((s) => s.name),
+    droppedNames,
   });
 }

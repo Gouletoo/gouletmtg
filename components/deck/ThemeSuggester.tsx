@@ -34,6 +34,8 @@ export function ThemeSuggester() {
   const [error, setError] = useState<string | null>(null);
   const [creating, setCreating] = useState<string | null>(null);
 
+  const [hasRun, setHasRun] = useState(false);
+
   const submit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!theme.trim()) return;
@@ -41,21 +43,36 @@ export function ThemeSuggester() {
     setError(null);
     setSuggestions([]);
     setDropped([]);
+    setHasRun(true);
 
-    const r = await fetch("/api/decks/suggest-commanders", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ theme }),
-    });
-    const data = await r.json();
-    setLoading(false);
+    try {
+      const r = await fetch("/api/decks/suggest-commanders", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ theme }),
+      });
+      const data = await r.json().catch(() => ({}));
 
-    if (!r.ok) {
-      setError(data.error ?? "Échec");
-      return;
+      if (!r.ok) {
+        setError(data.error ?? `Erreur HTTP ${r.status}`);
+        return;
+      }
+      setSuggestions(data.suggestions ?? []);
+      setDropped(data.droppedNames ?? []);
+      if ((data.suggestions ?? []).length === 0) {
+        if ((data.droppedNames ?? []).length > 0) {
+          setError(
+            `Gemini a proposé ${data.droppedNames.length} commander(s) mais aucun n'a été trouvé dans ta base. Re-essaie ou lance la sync Scryfall.`
+          );
+        } else {
+          setError("Gemini n'a pas retourné de suggestions. Re-essaie avec un thème différent.");
+        }
+      }
+    } catch (err) {
+      setError((err as Error).message ?? "Échec réseau");
+    } finally {
+      setLoading(false);
     }
-    setSuggestions(data.suggestions ?? []);
-    setDropped(data.droppedNames ?? []);
   };
 
   const pick = async (s: Suggestion) => {
@@ -184,7 +201,7 @@ export function ThemeSuggester() {
         </div>
       )}
 
-      {!loading && suggestions.length === 0 && theme && error === null && (
+      {!loading && !hasRun && (
         <p className="font-body text-ink/40 italic">
           Tape un thème puis clique &laquo;&nbsp;Suggérer&nbsp;&raquo; pour voir
           des commanders pertinents.

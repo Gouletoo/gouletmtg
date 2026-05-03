@@ -39,20 +39,18 @@ Pour le thème suivant, suggère 8 commanders pertinents. Privilégie les comman
 2. Des angles de stratégie sous-explorés mais solides
 3. Une diversité de couleurs si possible
 
-Réponds en JSON strict, sans markdown :
+Respond in STRICT JSON only:
 {
   "suggestions": [
-    {"name": "Nom Exact de la Carte", "reason": "Pourquoi ce commander fit ce thème (max 30 mots, en français)"}
+    {"name": "Exact Card Name", "reason": "Short English explanation (max 25 words) of why this commander fits the theme"}
   ]
 }
 
-RÈGLES JSON STRICTES (TRÈS IMPORTANT) :
-- Utilise UNIQUEMENT des guillemets droits doubles (")
-- Échappe toute guillemet interne avec backslash (")
-- ÉVITE les apostrophes/guillemets typographiques (' ' " ")
-- Pour les contractions françaises, utilise des formulations sans apostrophe quand possible (ex: "à cause de" plutôt que "qu'à"). Si une apostrophe est inévitable, c'est OK car JSON les accepte dans les strings.
-
-Le "name" doit être le nom EXACT en anglais tel qu'il apparaît sur Scryfall (ex: "Aragorn, the Uniter" pas "Aragorn"). N'invente pas de cartes.`;
+CRITICAL RULES:
+- Output ONLY valid JSON, no markdown code fences, no preamble.
+- "name" must be the EXACT English Scryfall name (e.g., "Aragorn, the Uniter" not "Aragorn"). Do not invent cards.
+- "reason" in English to avoid quote escaping issues. Plain ASCII when possible.
+- 8 suggestions maximum.`;
 
 export async function suggestCommanders(theme: string): Promise<CommanderSuggestion[]> {
   const model = getClient().getGenerativeModel({
@@ -68,7 +66,9 @@ export async function suggestCommanders(theme: string): Promise<CommanderSuggest
 
   const r = await model.generateContent(prompt);
   const text = r.response.text();
+  console.log("[gemini-suggest] raw response (first 500 chars):", text.slice(0, 500));
   const parsed = parseSuggestionsJSON(text);
+  console.log("[gemini-suggest] parsed", parsed.suggestions?.length ?? 0, "suggestions");
   return parsed.suggestions ?? [];
 }
 

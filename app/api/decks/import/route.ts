@@ -2,6 +2,11 @@ import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { fetchArchidektDeck } from "@/lib/archidekt/import";
 
+/** Échappe les caractères spéciaux ilike (%, _, virgule, parenthèses) pour `or()` PostgREST. */
+function escapeIlike(s: string): string {
+  return s.replace(/[%_,()]/g, (m) => `\\${m}`);
+}
+
 export async function POST(req: NextRequest) {
   const supabase = await createClient();
   const {
@@ -24,28 +29,57 @@ export async function POST(req: NextRequest) {
     );
   }
 
-  // Résoudre les scryfall_id manquants via la table cards
-  const missingScryfall = archidekt.cards.filter((c) => !c.scryfall_id);
-  const namesNeeded = Array.from(new Set(missingScryfall.map((c) => c.name)));
+  // Stratégie : on tente le match dans cet ordre :
+  //   1. scryfall_id si fourni ET présent dans notre DB
+  //   2. nom exact (Archidekt) → cards.name
+  //   3. front-face only pour DFCs/split (ex: "Search for Azcanta" → "Search for Azcanta // ...")
+  // On indexe TOUS les noms d'un coup pour éviter N requêtes.
 
-  let nameToId = new Map<string, string>();
-  if (namesNeeded.length > 0) {
-    const { data: matches } = await supabase
-      .from("cards")
-      .select("scryfall_id,name")
-      .in("name", namesNeeded);
-    nameToId = new Map((matches ?? []).map((m) => [m.name, m.scryfall_id as string]));
+  const allNames = Array.from(new Set(archidekt.cards.map((c) => c.name)));
+
+  // Match exact par nom
+  const { data: exactMatches } = await supabase
+    .from("cards")
+    .select("scryfall_id,name")
+    .in("name", allNames);
+  const exactByName = new Map((exactMatches ?? []).map((m) => [m.name as string, m.scryfall_id as string]));
+
+  // Pour les noms non matchés en exact, tente le préfixe (DFC/split)
+  const stillMissing = allNames.filter((n) => !exactByName.has(n));
+  const prefixByName = new Map<string, string>();
+  if (stillMissing.length > 0) {
+    // Postgres `ilike any (...)` n'est pas supporté en supabase.in — on bouclera par lot.
+    // Pour limiter les coûts, on cherche par chunks de 50 via `or()` avec ilike.
+    const CHUNK = 50;
+    for (let i = 0; i < stillMissing.length; i += CHUNK) {
+      const chunk = stillMissing.slice(i, i + CHUNK);
+      // Construit "name.ilike.Search for Azcanta //%,name.ilike.Other //%"
+      const filter = chunk
+        .map((n) => `name.ilike.${escapeIlike(n)} //%`)
+        .join(",");
+      const { data: matches } = await supabase
+        .from("cards")
+        .select("scryfall_id,name")
+        .or(filter);
+      for (const m of matches ?? []) {
+        const front = (m.name as string).split(" // ")[0];
+        if (chunk.includes(front)) prefixByName.set(front, m.scryfall_id as string);
+      }
+    }
   }
 
   // Vérifier les scryfall_id fournis existent dans notre table
   const givenIds = archidekt.cards
     .map((c) => c.scryfall_id)
     .filter((x): x is string => Boolean(x));
-  const { data: existingIds } = await supabase
-    .from("cards")
-    .select("scryfall_id")
-    .in("scryfall_id", givenIds);
-  const validIds = new Set((existingIds ?? []).map((r) => r.scryfall_id as string));
+  let validIds = new Set<string>();
+  if (givenIds.length > 0) {
+    const { data: existingIds } = await supabase
+      .from("cards")
+      .select("scryfall_id")
+      .in("scryfall_id", givenIds);
+    validIds = new Set((existingIds ?? []).map((r) => r.scryfall_id as string));
+  }
 
   type Resolved = {
     cardId: string;
@@ -58,9 +92,16 @@ export async function POST(req: NextRequest) {
   const unresolved: string[] = [];
 
   for (const c of archidekt.cards) {
-    let id: string | null = c.scryfall_id;
-    if (id && !validIds.has(id)) id = null;
-    if (!id) id = nameToId.get(c.name) ?? null;
+    let id: string | null = null;
+
+    // 1. scryfall_id direct
+    if (c.scryfall_id && validIds.has(c.scryfall_id)) {
+      id = c.scryfall_id;
+    }
+    // 2. nom exact
+    if (!id) id = exactByName.get(c.name) ?? null;
+    // 3. front-face DFC/split
+    if (!id) id = prefixByName.get(c.name) ?? null;
 
     if (id) {
       resolved.push({
@@ -105,13 +146,25 @@ export async function POST(req: NextRequest) {
     );
   }
 
-  // Insert deck_cards (sauf commanders qui sont déjà liés via decks.commander_id)
+  // Dédupe par card_id (additionne qty, fusionne catégories) avant insert.
+  // Le PK de deck_cards est (deck_id, card_id) → deux lignes pour la même carte cassent l'insert.
   const nonCommanderCards = resolved.filter((r) => !r.isCommander);
-  const rows = nonCommanderCards.map((c) => ({
+  const dedupMap = new Map<string, { qty: number; categories: Set<string> }>();
+  for (const c of nonCommanderCards) {
+    const existing = dedupMap.get(c.cardId);
+    if (existing) {
+      existing.qty += c.qty;
+      for (const cat of c.categories) existing.categories.add(cat);
+    } else {
+      dedupMap.set(c.cardId, { qty: c.qty, categories: new Set(c.categories) });
+    }
+  }
+
+  const rows = Array.from(dedupMap.entries()).map(([card_id, v]) => ({
     deck_id: deckRow.id,
-    card_id: c.cardId,
-    qty: c.qty,
-    categories: c.categories,
+    card_id,
+    qty: v.qty,
+    categories: Array.from(v.categories),
   }));
 
   if (rows.length > 0) {

@@ -1,0 +1,45 @@
+@import "tailwindcss";
+
+/*
+ * gouletmtg — brand tokens
+ * Reference: /Users/gougou/Desktop/Agent-yoga/brand_system/goul.francis.yoga_visual_brain_1.md
+ * Visual identity only (no yoga context).
+ */
+
+@theme inline {
+  --color-cream: #F5EDDF;
+  --color-ink: #2A2218;
+  --color-terracotta: #C4704A;
+  --color-sand: #E2B56B;
+  --color-sky: #7BAFC4;
+
+  --color-background: var(--color-cream);
+  --color-foreground: var(--color-ink);
+  --color-accent: var(--color-terracotta);
+  --color-accent-secondary: var(--color-sand);
+  --color-accent-rare: var(--color-sky);
+
+  --font-display: var(--font-cormorant), serif;
+  --font-body: var(--font-khula), system-ui, sans-serif;
+}
+
+html, body {
+  background: var(--color-cream);
+  color: var(--color-ink);
+}
+
+body {
+  font-family: var(--font-body);
+  font-feature-settings: "kern", "liga", "calt";
+  -webkit-font-smoothing: antialiased;
+}
+
+h1, h2, h3, h4, h5, h6, .font-display {
+  font-family: var(--font-display);
+  letter-spacing: -0.01em;
+}
+
+::selection {
+  background: var(--color-terracotta);
+  color: var(--color-cream);
+}

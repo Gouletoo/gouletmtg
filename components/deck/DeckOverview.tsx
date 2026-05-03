@@ -3,6 +3,7 @@
 import { useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { AddCardModal } from "./AddCardModal";
+import { CardDetailDrawer, type CardDetail, type DeckCardSlice } from "./CardDetailDrawer";
 
 type CardSummary = {
   scryfall_id: string;
@@ -78,6 +79,11 @@ export function DeckOverview({
 }) {
   const router = useRouter();
   const [showAddModal, setShowAddModal] = useState(false);
+  const [selectedCard, setSelectedCard] = useState<{
+    card: CardDetail;
+    slice: DeckCardSlice | null;
+    isCommander: boolean;
+  } | null>(null);
 
   const allCategoriesInDeck = useMemo(() => {
     const set = new Set<string>();
@@ -86,6 +92,26 @@ export function DeckOverview({
     }
     return Array.from(set);
   }, [deckCards]);
+
+  const cardSliceById = useMemo(() => {
+    const map = new Map<string, DeckCardSlice>();
+    for (const r of deckCards) {
+      map.set(r.card_id, {
+        qty: r.qty,
+        categories: r.categories ?? [],
+        notes: r.notes,
+      });
+    }
+    return map;
+  }, [deckCards]);
+
+  const openCard = (card: CardDetail, isCommander: boolean) => {
+    setSelectedCard({
+      card,
+      slice: isCommander ? null : cardSliceById.get(card.scryfall_id) ?? null,
+      isCommander,
+    });
+  };
 
   const removeCard = async (cardId: string) => {
     if (!confirm("Retirer cette carte du deck ?")) return;
@@ -215,7 +241,12 @@ export function DeckOverview({
             <CategorySection title="Commander" count={commanders.length} defaultOpen>
               <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-3">
                 {commanders.map((c) => (
-                  <CardTile key={c.scryfall_id} card={c} qty={1} />
+                  <CardTile
+                    key={c.scryfall_id}
+                    card={c}
+                    qty={1}
+                    onClick={() => openCard(c, true)}
+                  />
                 ))}
               </div>
             </CategorySection>
@@ -232,6 +263,7 @@ export function DeckOverview({
                       key={i.card.scryfall_id}
                       card={i.card}
                       qty={i.qty}
+                      onClick={() => openCard(i.card, false)}
                       onRemove={() => removeCard(i.card.scryfall_id)}
                     />
                   ))}
@@ -312,6 +344,7 @@ export function DeckOverview({
                           card={i.card}
                           qty={i.qty}
                           compact
+                          onClick={() => openCard(i.card, false)}
                           onRemove={() => removeCard(i.card.scryfall_id)}
                         />
                       ))}
@@ -329,6 +362,17 @@ export function DeckOverview({
           deckId={deck.id}
           existingCategories={allCategoriesInDeck}
           onClose={() => setShowAddModal(false)}
+        />
+      )}
+
+      {selectedCard && (
+        <CardDetailDrawer
+          deckId={deck.id}
+          card={selectedCard.card}
+          slice={selectedCard.slice}
+          knownCategories={allCategoriesInDeck}
+          isCommander={selectedCard.isCommander}
+          onClose={() => setSelectedCard(null)}
         />
       )}
     </>
@@ -407,31 +451,40 @@ function CardTile({
   card,
   qty,
   compact = false,
+  onClick,
   onRemove,
 }: {
   card: CardSummary;
   qty: number;
   compact?: boolean;
+  onClick?: () => void;
   onRemove?: () => void;
 }) {
   const expensive = (parseFloat(card.prices?.usd ?? "0") || 0) > 50;
   return (
     <article className="group relative">
-      {card.image_uris?.normal ? (
-        // eslint-disable-next-line @next/next/no-img-element
-        <img
-          src={compact ? card.image_uris.small ?? card.image_uris.normal : card.image_uris.normal}
-          alt={card.name}
-          loading="lazy"
-          className="w-full rounded-lg shadow-sm group-hover:shadow-lg transition-shadow"
-        />
-      ) : (
-        <div className="aspect-[5/7] rounded-lg bg-ink/5 flex items-center justify-center text-center p-2">
-          <span className={compact ? "font-display text-xs text-ink/60" : "font-display text-sm text-ink/60"}>
-            {card.name}
-          </span>
-        </div>
-      )}
+      <button
+        type="button"
+        onClick={onClick}
+        className="block w-full text-left"
+        aria-label={`Détails de ${card.name}`}
+      >
+        {card.image_uris?.normal ? (
+          // eslint-disable-next-line @next/next/no-img-element
+          <img
+            src={compact ? card.image_uris.small ?? card.image_uris.normal : card.image_uris.normal}
+            alt={card.name}
+            loading="lazy"
+            className="w-full rounded-lg shadow-sm group-hover:shadow-lg group-hover:ring-1 group-hover:ring-terracotta transition-all"
+          />
+        ) : (
+          <div className="aspect-[5/7] rounded-lg bg-ink/5 flex items-center justify-center text-center p-2 group-hover:ring-1 group-hover:ring-terracotta">
+            <span className={compact ? "font-display text-xs text-ink/60" : "font-display text-sm text-ink/60"}>
+              {card.name}
+            </span>
+          </div>
+        )}
+      </button>
       {qty > 1 && (
         <span className={`absolute top-1 right-1 bg-ink text-cream rounded-full ${compact ? "w-5 h-5 text-[10px]" : "w-6 h-6 text-xs"} flex items-center justify-center font-body pointer-events-none`}>
           ×{qty}
@@ -444,7 +497,10 @@ function CardTile({
       )}
       {onRemove && (
         <button
-          onClick={onRemove}
+          onClick={(e) => {
+            e.stopPropagation();
+            onRemove();
+          }}
           aria-label={`Retirer ${card.name}`}
           className={`absolute ${compact ? "bottom-1 right-1 w-6 h-6 text-xs" : "bottom-2 right-2 w-8 h-8 text-sm"} bg-ink/80 hover:bg-terracotta text-cream rounded-full opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center font-body`}
         >

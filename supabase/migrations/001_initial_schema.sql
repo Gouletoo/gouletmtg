@@ -1,19 +1,13 @@
 -- gouletmtg — schéma initial
 -- Référence : ARCHITECTURE.md §7.1
+--
+-- ⚠ NE PAS RÉ-EXÉCUTER cette migration sur une DB qui a déjà des données.
+-- Les CREATE TABLE plus bas échoueront proprement si les tables existent.
+-- (Les anciens DROP TABLE CASCADE ont été retirés après un incident de
+-- destruction accidentelle de données — 2026-05-04.)
 
 -- Extensions (doivent être créées AVANT les index qui les utilisent)
 CREATE EXTENSION IF NOT EXISTS pg_trgm;
-
--- Reset propre si exécution partielle précédente
-DROP TABLE IF EXISTS knowledge_entries CASCADE;
-DROP TABLE IF EXISTS synergy_cache CASCADE;
-DROP TABLE IF EXISTS deck_history CASCADE;
-DROP TABLE IF EXISTS deck_versions CASCADE;
-DROP TABLE IF EXISTS deck_cards CASCADE;
-DROP TABLE IF EXISTS decks CASCADE;
-DROP TABLE IF EXISTS profiles CASCADE;
-DROP TABLE IF EXISTS cards CASCADE;
-DROP FUNCTION IF EXISTS set_updated_at() CASCADE;
 
 -- 1. Cartes (sync Scryfall)
 CREATE TABLE cards (

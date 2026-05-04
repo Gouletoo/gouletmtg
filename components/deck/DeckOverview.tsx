@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { AddCardModal } from "./AddCardModal";
 import { CardDetailDrawer, type CardDetail, type DeckCardSlice } from "./CardDetailDrawer";
 import { SynergyPanel, type SynergyData } from "./SynergyPanel";
+import { StrategyEditor } from "./StrategyEditor";
 
 type CardSummary = {
   scryfall_id: string;
@@ -260,11 +261,7 @@ export function DeckOverview({
             </button>
           </div>
         </div>
-        {deck.strategy_summary && (
-          <p className="font-body text-ink/70 max-w-2xl leading-relaxed">
-            {deck.strategy_summary}
-          </p>
-        )}
+        <StrategyEditor deckId={deck.id} initialStrategy={deck.strategy_summary} />
         {overPriced.length > 0 && (
           <div className="mt-6 inline-block px-4 py-2 bg-sand/20 border border-sand rounded-sm text-xs font-body text-ink">
             ⚠ {overPriced.length} carte(s) au-dessus de 50$ — vérifie le respect du plafond du pod

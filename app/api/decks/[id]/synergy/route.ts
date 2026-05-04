@@ -28,7 +28,7 @@ export async function GET(
   // Fetch deck (must own it via RLS)
   const { data: deck, error: deckErr } = await supabase
     .from("decks")
-    .select("id,commander_id,partner_commander_id")
+    .select("id,commander_id,partner_commander_id,strategy_tags")
     .eq("id", deckId)
     .single();
 
@@ -60,14 +60,30 @@ export async function GET(
   }
 
   // Combine commander tags (si plusieurs commanders, union)
-  const commanderTags: Tag[] = [];
+  const anchorTags: Tag[] = [];
+  const seenTags = new Set<string>();
+  const pushTag = (t: Tag) => {
+    const key = `${t.category}:${t.value}`;
+    if (!seenTags.has(key)) {
+      seenTags.add(key);
+      anchorTags.push(t);
+    }
+  };
+
   for (const c of commanderRows) {
     const tags = extractTags(c.oracle_text, c.type_line);
-    for (const t of tags) {
-      if (!commanderTags.some((x) => x.category === t.category && x.value === t.value)) {
-        commanderTags.push(t);
-      }
-    }
+    for (const t of tags) pushTag(t);
+  }
+
+  // Augmente avec les strategy_tags (extraits par Gemini depuis le strategy_summary)
+  const strategyTags = (deck.strategy_tags as string[] | null) ?? [];
+  for (const raw of strategyTags) {
+    const idx = raw.indexOf(":");
+    if (idx <= 0) continue;
+    pushTag({
+      category: raw.slice(0, idx) as Tag["category"],
+      value: raw.slice(idx + 1),
+    });
   }
 
   // Score chaque carte du deck vs commander
@@ -89,7 +105,7 @@ export async function GET(
     const card = (Array.isArray(row.cards) ? row.cards[0] : row.cards) as RowCard | null;
     if (!card) continue;
     const cardTags = extractTags(card.oracle_text, card.type_line);
-    const result = scoreFromTags(commanderTags, cardTags);
+    const result = scoreFromTags(anchorTags, cardTags);
     commanderScores.push({
       cardId: card.scryfall_id,
       name: card.name,
@@ -123,5 +139,7 @@ export async function GET(
     weakLinks,
     averageScore,
     threshold: WEAK_LINK_THRESHOLD,
+    anchorTags: anchorTags.map((t) => `${t.category}:${t.value}`),
+    strategyTagCount: strategyTags.length,
   });
 }

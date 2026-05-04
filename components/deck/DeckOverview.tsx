@@ -1,9 +1,10 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { AddCardModal } from "./AddCardModal";
 import { CardDetailDrawer, type CardDetail, type DeckCardSlice } from "./CardDetailDrawer";
+import { SynergyPanel, type SynergyData } from "./SynergyPanel";
 
 type CardSummary = {
   scryfall_id: string;
@@ -84,6 +85,42 @@ export function DeckOverview({
     slice: DeckCardSlice | null;
     isCommander: boolean;
   } | null>(null);
+
+  // Synergy data (fetched once per render, cached in state)
+  const [synergyData, setSynergyData] = useState<SynergyData | null>(null);
+  const [synergyLoading, setSynergyLoading] = useState(true);
+  const [synergyError, setSynergyError] = useState<string | null>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    setSynergyLoading(true);
+    setSynergyError(null);
+    fetch(`/api/decks/${deck.id}/synergy`)
+      .then((r) => r.json())
+      .then((d) => {
+        if (cancelled) return;
+        if (d.error) setSynergyError(d.error);
+        else setSynergyData(d);
+      })
+      .catch((e) => {
+        if (!cancelled) setSynergyError(e.message);
+      })
+      .finally(() => {
+        if (!cancelled) setSynergyLoading(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+    // re-run quand le deck change ou ses cartes (count) changent
+  }, [deck.id, deckCards.length]);
+
+  const synergyByCardId = useMemo(() => {
+    const m = new Map<string, number>();
+    if (synergyData) {
+      for (const s of synergyData.commanderScores) m.set(s.cardId, s.score);
+    }
+    return m;
+  }, [synergyData]);
 
   const allCategoriesInDeck = useMemo(() => {
     const set = new Set<string>();
@@ -263,6 +300,7 @@ export function DeckOverview({
                       key={i.card.scryfall_id}
                       card={i.card}
                       qty={i.qty}
+                      synergyScore={synergyByCardId.get(i.card.scryfall_id)}
                       onClick={() => openCard(i.card, false)}
                       onRemove={() => removeCard(i.card.scryfall_id)}
                     />
@@ -326,6 +364,14 @@ export function DeckOverview({
                 </div>
               ))}
             </div>
+          </div>
+
+          <div className="pt-6 border-t border-ink/10">
+            <SynergyPanel
+              data={synergyData}
+              loading={synergyLoading}
+              error={synergyError}
+            />
           </div>
 
           {outsideByCategory.size > 0 && (
@@ -447,20 +493,30 @@ function CompactCategory({
   );
 }
 
+function synergyBadgeStyle(score: number): { bg: string; text: string } {
+  // Green for high (60+), sand for medium (30-59), terracotta for low (<30)
+  if (score >= 60) return { bg: "#6B8E5A", text: "#F5EDDF" };
+  if (score >= 30) return { bg: "#E2B56B", text: "#2A2218" };
+  return { bg: "#C4704A", text: "#F5EDDF" };
+}
+
 function CardTile({
   card,
   qty,
   compact = false,
+  synergyScore,
   onClick,
   onRemove,
 }: {
   card: CardSummary;
   qty: number;
   compact?: boolean;
+  synergyScore?: number;
   onClick?: () => void;
   onRemove?: () => void;
 }) {
   const expensive = (parseFloat(card.prices?.usd ?? "0") || 0) > 50;
+  const synergyStyle = synergyScore !== undefined ? synergyBadgeStyle(synergyScore) : null;
   return (
     <article className="group relative">
       <button
@@ -493,6 +549,15 @@ function CardTile({
       {expensive && !compact && (
         <span className="absolute top-2 left-2 bg-sand text-ink rounded-sm px-2 py-0.5 text-[10px] font-body uppercase tracking-wider pointer-events-none">
           50$+
+        </span>
+      )}
+      {synergyStyle && !compact && (
+        <span
+          className="absolute bottom-2 left-2 rounded-full px-2 py-0.5 text-[10px] font-body font-medium tabular-nums pointer-events-none shadow-md"
+          style={{ backgroundColor: synergyStyle.bg, color: synergyStyle.text }}
+          title={`Synergie commander : ${synergyScore}/100`}
+        >
+          {synergyScore}
         </span>
       )}
       {onRemove && (
